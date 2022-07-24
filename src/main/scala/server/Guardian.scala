@@ -24,14 +24,14 @@ object Guardian:
     case Error(cmd: ServerCommand) extends ChatMsgReply(cmd)
 
   enum CmdSource:
-    case Chat, UserManagment
+    case Chat, Auth
 
   enum GCmd[T <: CmdSource & Singleton](val cmdType: T):
     case WrappedCmd(clientCmd: ClientCommand, replyTo: ActorRef[ChatMsgReply]) extends GCmd(CmdSource.Chat)
 
     case Accept(remoteAddress: InetSocketAddress, replyTo: ActorRef[ConnectionAcceptedReply])
-        extends GCmd(CmdSource.UserManagment)
-    case Disconnected(remoteAddress: InetSocketAddress) extends GCmd(CmdSource.UserManagment)
+        extends GCmd(CmdSource.Auth)
+    case Disconnected(remoteAddress: InetSocketAddress) extends GCmd(CmdSource.Auth)
   end GCmd
 
   def apply(appCfg: scala2.AppConfig): Behavior[GCmd[?]] =

@@ -41,7 +41,7 @@ final class Bootstrap(
 
   given ec: ExecutionContext = system.executionContext
   given sch: Scheduler = system.scheduler
-  given to: akka.util.Timeout = akka.util.Timeout(2.seconds)
+  given to: akka.util.Timeout = akka.util.Timeout(3.seconds)
   given logger: Logger = system.log
 
   val bs = 1 << 2
@@ -66,6 +66,7 @@ final class Bootstrap(
       }
       // customize supervision stage per stage
       .addAttributes(ActorAttributes.supervisionStrategy(resume(_, logger)))
+      // .log("broadcast", _.toString)(system.log)
       .via(Protocol.ServerCommand.Encoder)
 
   private def createRoom(guardian: ActorRef[Guardian.GCmd[?]], logger: Logger) =
@@ -109,7 +110,7 @@ final class Bootstrap(
             val remote = connection.remoteAddress
             system.log.info("Accepted client from {}:{}", remote.getHostString, remote.getPort)
 
-            val showAdvtEvery = 100.millis // seconds
+            /*val showAdvtEvery = 100.millis // seconds
             Source
               .tick(
                 showAdvtEvery,
@@ -118,7 +119,7 @@ final class Bootstrap(
               )
               .via(Protocol.ClientCommand.Encoder)
               .to(sinkHub)
-              .run()
+              .run()*/
 
             /*Source
               .single(Protocol.ClientCommand.Connected(host = remote.getHostString, port = remote.getPort))
@@ -143,7 +144,7 @@ final class Bootstrap(
                       .fromSinkAndSourceCoupled(sinkHub, sourceHub)
                       .addAttributes(ActorAttributes.supervisionStrategy(stopConFlow(_, logger)))
                       // .joinMat(KillSwitches.singleBidi[ByteString, ByteString])(Keep.right)
-                      .withAttributes(Attributes.inputBuffer(1, 1))
+                      .withAttributes(Attributes.inputBuffer(1, bs))
                       /*.mapMaterializedValue { r =>
                         logger.info(s"Connection from ${remote.getHostString}:${remote.getPort}")
                         r

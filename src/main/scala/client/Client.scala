@@ -83,8 +83,9 @@ object Client:
     import scala.concurrent.duration.*
 
     val out =
-      //Flow[ByteString].delay(2.seconds).via(ServerCommand.Decoder)
-      ServerCommand.Decoder
+      // Flow[ByteString].delay(2.seconds).via(ServerCommand.Decoder)
+      ServerCommand
+        .Decoder
         .takeWhile(!_.toOption.exists(_.isInstanceOf[ServerCommand.Disconnect]), inclusive = true)
         .via(serverCommandToString)
         .concat(Source.single("Disconnected from server"))
