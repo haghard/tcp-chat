@@ -44,13 +44,21 @@ final class Bootstrap(
   given to: akka.util.Timeout = akka.util.Timeout(3.seconds)
   given logger: Logger = system.log
 
-  val bs = 1 << 2
+  val bs = appCfg.bufferSize
   val shutdown = CoordinatedShutdown(system)
+
+  val clientQuit = "/quit"
 
   private def serverFlow(guardian: ActorRef[Guardian.GCmd.WrappedCmd], logger: Logger) =
     Protocol
       .ClientCommand
       .Decoder
+      .takeWhile(
+        _.filter {
+          case ClientCommand.SendMessage(_, msg) if msg == clientQuit => false
+          case _                                                      => true
+        }.isSuccess
+      )
       .mapAsync(1) {
         case Success(clientCmd) =>
           guardian
@@ -66,6 +74,7 @@ final class Bootstrap(
       }
       // customize supervision stage per stage
       .addAttributes(ActorAttributes.supervisionStrategy(resume(_, logger)))
+
       // .log("broadcast", _.toString)(system.log)
       .via(Protocol.ServerCommand.Encoder)
 
@@ -110,7 +119,7 @@ final class Bootstrap(
             val remote = connection.remoteAddress
             system.log.info("Accepted client from {}:{}", remote.getHostString, remote.getPort)
 
-            /*val showAdvtEvery = 100.millis // seconds
+            val showAdvtEvery = 60.seconds
             Source
               .tick(
                 showAdvtEvery,
@@ -119,7 +128,7 @@ final class Bootstrap(
               )
               .via(Protocol.ClientCommand.Encoder)
               .to(sinkHub)
-              .run()*/
+              .run()
 
             /*Source
               .single(Protocol.ClientCommand.Connected(host = remote.getHostString, port = remote.getPort))
@@ -138,6 +147,12 @@ final class Bootstrap(
               .ask[Guardian.ConnectionAcceptedReply](Guardian.GCmd.Accept(remote, _))
               .map {
                 case Guardian.ConnectionAcceptedReply.Ok =>
+                  /*
+                  val connectionFlow0: Flow[ByteString, ByteString, NotUsed] =
+                    Protocol.ClientCommand.Decoder
+                      .takeWhile(_.filter(m => m.isInstanceOf[ClientCommand.SendMessage] & m.asInstanceOf[ClientCommand.SendMessage].msg == "/quit"))
+                      .statefulMapConcat {*/
+
                   // Thread.sleep(2_500)
                   val connectionFlow: Flow[ByteString, ByteString, NotUsed /*UniqueKillSwitch*/ ] =
                     Flow

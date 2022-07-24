@@ -15,8 +15,8 @@ object Protocol:
     def apply(n: String): UserName = n
     // expose some String methods
     extension (u: UserName)
-      def lenght(): Int = u.length
-      def trim(): UserName = u.trim
+      def length(): Int = u.length()
+      def trim(): UserName = u.trim()
       def inBanned(bannedUsers: List[String]): Boolean = bannedUsers.contains(u)
 
   private val username: Codec[UserName] =
