@@ -4,7 +4,6 @@
 
 package server
 
-//import ProjectA.MainProjectA
 import scala2.bridge
 import akka.actor.typed.scaladsl.Behaviors
 import akka.actor.typed.{ ActorRef, ActorSystem, Props, Scheduler, SpawnProtocol }

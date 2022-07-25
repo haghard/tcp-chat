@@ -20,7 +20,6 @@ object Guardian:
 
   enum ChatMsgReply(val serverCmd: ServerCommand):
     case Broadcast(cmd: ServerCommand) extends ChatMsgReply(cmd)
-    case DirectResponse(cmd: ServerCommand) extends ChatMsgReply(cmd)
     case Error(cmd: ServerCommand) extends ChatMsgReply(cmd)
 
   enum CmdSource:
@@ -74,7 +73,7 @@ object Guardian:
           cmd.clientCmd match
             case c: ClientCommand.SendMessage =>
               ctx.log.info("{}: {}", c.usr, c.msg)
-              // if (ThreadLocalRandom.current().nextDouble() > .6) Thread.sleep(2_400)
+              // if (ThreadLocalRandom.current().nextDouble() > .6) Thread.sleep(2_000)
 
               cmd.replyTo.tell(state.msgReply(c.usr, c.msg))
               Behaviors.same

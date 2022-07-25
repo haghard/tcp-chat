@@ -30,11 +30,11 @@ object Client:
   private val serverCommandToString = Flow[Try[ServerCommand]].map {
     case Success(serverCmd) =>
       serverCmd match
-        case ServerCommand.Welcome(user, msg) => s"Logged in as $user \n$msg"
-        case ServerCommand.Alert(msg)         => msg
-        case ServerCommand.Message(user, msg) => s"$user: $msg"
-        case ServerCommand.Disconnect(cause)  => s"Server disconnected because: $cause"
-    case Failure(ex) => s"Error parsing server command: ${ex.getMessage}"
+        case ServerCommand.Authorized(user, msg) => s"Logged in as $user \n$msg"
+        case ServerCommand.Message(user, msg)    => s"$user: $msg"
+        case ServerCommand.Disconnect(cause)     => s"Server disconnected because: $cause"
+    case Failure(ex) =>
+      s"Error parsing server command: ${ex.getMessage}"
   }
 
   def main(args: Array[String]): Unit =
@@ -53,7 +53,7 @@ object Client:
         println(th.getMessage)
         th.printStackTrace()
         println("Usage: Server [host] [port] [username]")
-        System.exit(1)
+        System.exit(-1)
   end main
 
   def run(

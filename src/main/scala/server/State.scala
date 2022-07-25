@@ -8,29 +8,28 @@ import java.net.InetSocketAddress
 
 final case class State(
     appCfg: scala2.AppConfig,
-    pendingAddr: Option[InetSocketAddress] = None,
+    pendingAddress: Option[InetSocketAddress] = None,
     usersOnline: Map[InetSocketAddress, UserName] = Map.empty):
   self =>
 
   def authorize(usr: UserName): (State, ChatMsgReply) =
     if (usr.inBanned(appCfg.bannedUsers))
-      (copy(pendingAddr = None), ChatMsgReply.Error(ServerCommand.Disconnect(s"Auth $usr - error")))
+      (copy(pendingAddress = None), ChatMsgReply.Error(ServerCommand.Disconnect(s"Auth $usr - error")))
     else
       val s =
-        pendingAddr match
+        pendingAddress match
           case Some(remoteAddress) =>
-            copy(pendingAddr = None, usersOnline + (remoteAddress -> usr))
+            copy(pendingAddress = None, usersOnline + (remoteAddress -> usr))
           case None =>
             println("This should never happen !!!")
             self
-
-      (s, ChatMsgReply.DirectResponse(ServerCommand.Welcome(usr, s"Authorized $usr")))
+      (s, ChatMsgReply.Broadcast(ServerCommand.Authorized(usr, s"Authorized $usr")))
 
   def disconnect(remoteAddress: InetSocketAddress): State =
-    self.copy(pendingAddr = None, usersOnline - remoteAddress)
+    self.copy(pendingAddress = None, usersOnline - remoteAddress)
 
   def acceptCon(remoteAddress: InetSocketAddress): (State, ConnectionAcceptedReply) =
-    (self.copy(pendingAddr = Some(remoteAddress)), ConnectionAcceptedReply.Ok)
+    (self.copy(pendingAddress = Some(remoteAddress)), ConnectionAcceptedReply.Ok)
 
   /*if (ThreadLocalRandom.current().nextBoolean())
     (self, ConnectionAcceptedReply.Err(s"$remoteAddress is blacklisted!"))

@@ -15,7 +15,16 @@ import akka.actor.CoordinatedShutdown.{
 }
 import akka.actor.typed.{ ActorRef, ActorSystem, Props, Scheduler, SpawnProtocol }
 import akka.actor.typed.scaladsl.AskPattern.*
-import akka.stream.{ ActorAttributes, Attributes, KillSwitches, Supervision, UniqueKillSwitch }
+import akka.stream.{
+  ActorAttributes,
+  Attributes,
+  BoundedSourceQueue,
+  KillSwitches,
+  QueueCompletionResult,
+  QueueOfferResult,
+  Supervision,
+  UniqueKillSwitch,
+}
 import com.typesafe.config.ConfigFactory
 
 import scala.concurrent.{ ExecutionContext, Future }
@@ -33,6 +42,9 @@ import scala.util.{ Failure, Success }
 object Bootstrap:
   case object BindFailure extends Reason
 
+  val clientQuit = "/quit"
+  val Backpressured = Protocol.ServerCommand.Disconnect("Backpressured")
+
 final class Bootstrap(
     host: String,
     port: Int,
@@ -47,63 +59,27 @@ final class Bootstrap(
   val bs = appCfg.bufferSize
   val shutdown = CoordinatedShutdown(system)
 
-  val clientQuit = "/quit"
-
-  private def serverFlow(guardian: ActorRef[Guardian.GCmd.WrappedCmd], logger: Logger) =
-    Protocol
-      .ClientCommand
-      .Decoder
-      .takeWhile(
-        _.filter {
-          case ClientCommand.SendMessage(_, msg) if msg == clientQuit => false
-          case _                                                      => true
-        }.isSuccess
-      )
-      .mapAsync(1) {
-        case Success(clientCmd) =>
-          guardian
-            .ask[Guardian.ChatMsgReply](Guardian.GCmd.WrappedCmd(clientCmd, _))
-            .map(_.serverCmd)(ExecutionContext.parasitic)
-        case Failure(parseError) =>
-          Future.successful(
-            Guardian
-              .ChatMsgReply
-              .DirectResponse(ServerCommand.Alert(s"Invalid command: ${parseError.getMessage}"))
-              .serverCmd
-          )
-      }
-      // customize supervision stage per stage
-      .addAttributes(ActorAttributes.supervisionStrategy(resume(_, logger)))
-
-      // .log("broadcast", _.toString)(system.log)
-      .via(Protocol.ServerCommand.Encoder)
-
-  private def createRoom(guardian: ActorRef[Guardian.GCmd[?]], logger: Logger) =
-    MergeHub
-      .sourceWithDraining[ByteString](bs)
-      /*.mapMaterializedValue { sink =>
-        logger.info("MergeHub-BroadcastHub")
-        sink
-      }*/
-      .via(serverFlow(guardian, logger))
-      .viaMat(KillSwitches.single)(Keep.both)
-      .toMat(
-        BroadcastHub
-          .sink[ByteString](bs)
-          /*.mapMaterializedValue { src =>
-            // logger.info("BroadcastHub.sink")
-            src
-          }*/
-      )(Keep.both)
-      .run()
-
-  def stopConFlow(cause: Throwable, logger: Logger) =
-    logger.error(s"Flow failed :", cause)
-    Supervision.Stop
-
   def resume(cause: Throwable, logger: Logger) =
     logger.error(s"CharRoom failed and resumes", cause)
     Supervision.Resume
+
+  def mk(
+      guardian: ActorRef[Guardian.GCmd.WrappedCmd],
+      logger: Logger,
+    ) =
+    Source
+      .queue[ClientCommand](appCfg.bufferSize)
+      .mapAsync(1) { clientCmd =>
+        // handle ask timeout
+        guardian
+          .ask[Guardian.ChatMsgReply](Guardian.GCmd.WrappedCmd(clientCmd, _))
+          .map(_.serverCmd)(ExecutionContext.parasitic)
+      }
+      .viaMat(KillSwitches.single)(Keep.both)
+      .toMat(BroadcastHub.sink[ServerCommand](appCfg.bufferSize))(Keep.both)
+      // customize supervision stage per stage
+      .addAttributes(ActorAttributes.supervisionStrategy(resume(_, logger)))
+      .run()
 
   def runTcpServer(): Unit =
     system
@@ -111,7 +87,14 @@ final class Bootstrap(
         SpawnProtocol.Spawn(Guardian(appCfg), "guardian", Props.empty, ref)
       )
       .foreach { guardian =>
-        val (((sinkHub, dc), ks), sourceHub) = createRoom(guardian, logger)
+
+        val ((q, ks), broadcastSource) = mk(guardian, logger)
+
+        /*val showAdvtEvery = 45.seconds
+        Source
+          .tick(showAdvtEvery, showAdvtEvery, Protocol.ClientCommand.ShowAdvt(msg = "Toyota - Let's Go Places!"))
+          .to(Sink.foreach(cmd => q.offer(cmd)))
+          .run()*/
 
         Tcp(system)
           .bind(host, port)
@@ -119,51 +102,33 @@ final class Bootstrap(
             val remote = connection.remoteAddress
             system.log.info("Accepted client from {}:{}", remote.getHostString, remote.getPort)
 
-            val showAdvtEvery = 60.seconds
-            Source
-              .tick(
-                showAdvtEvery,
-                showAdvtEvery,
-                Protocol.ClientCommand.ShowAdvt(msg = "Toyota - Let's Go Places!"),
-              )
-              .via(Protocol.ClientCommand.Encoder)
-              .to(sinkHub)
-              .run()
-
-            /*Source
-              .single(Protocol.ClientCommand.Connected(host = remote.getHostString, port = remote.getPort))
-              .via(Protocol.ClientCommand.Encoder)
-              .to(sinkHub)
-              .run()*/
-
-            /*
-              Ensure that the Broadcast output is dropped if there are no listening parties.
-              If this dropping Sink is not attached, then the broadcast hub will not drop any
-              elements itself when there are no subscribers, backpressuring the producer instead.
-             */
-            sourceHub.runWith(Sink.ignore)
-
             guardian
               .ask[Guardian.ConnectionAcceptedReply](Guardian.GCmd.Accept(remote, _))
               .map {
                 case Guardian.ConnectionAcceptedReply.Ok =>
-                  /*
-                  val connectionFlow0: Flow[ByteString, ByteString, NotUsed] =
-                    Protocol.ClientCommand.Decoder
-                      .takeWhile(_.filter(m => m.isInstanceOf[ClientCommand.SendMessage] & m.asInstanceOf[ClientCommand.SendMessage].msg == "/quit"))
-                      .statefulMapConcat {*/
+                  val connectionFlow: Flow[ByteString, ByteString, NotUsed] =
+                    Protocol
+                      .ClientCommand
+                      .Decoder
+                      .takeWhile(
+                        _.filter {
+                          case ClientCommand.SendMessage(_, msg) if msg == Bootstrap.clientQuit => false
+                          case _                                                                => true
+                        }.isSuccess
+                      )
+                      // .expand(Iterator.continually(_))
+                      .statefulMapConcat { () => tryClientCommand =>
+                        // 1.auth
+                        // 2.keys
 
-                  // Thread.sleep(2_500)
-                  val connectionFlow: Flow[ByteString, ByteString, NotUsed /*UniqueKillSwitch*/ ] =
-                    Flow
-                      .fromSinkAndSourceCoupled(sinkHub, sourceHub)
-                      .addAttributes(ActorAttributes.supervisionStrategy(stopConFlow(_, logger)))
-                      // .joinMat(KillSwitches.singleBidi[ByteString, ByteString])(Keep.right)
-                      .withAttributes(Attributes.inputBuffer(1, bs))
-                      /*.mapMaterializedValue { r =>
-                        logger.info(s"Connection from ${remote.getHostString}:${remote.getPort}")
-                        r
-                      }*/
+                        tryClientCommand match
+                          case Success(cmd) =>
+                            if (q.offer(cmd).isEnqueued) Nil else Bootstrap.Backpressured :: Nil
+
+                          case Failure(ex) =>
+                            Protocol.ServerCommand.Disconnect(ex.getMessage) :: Nil
+                      }
+                      .merge(broadcastSource, eagerComplete = true)
                       .watchTermination() { (_, done) =>
                         done.map { _ =>
                           logger.info(s"Connection from ${remote.getHostString}:${remote.getPort} has been terminated")
@@ -171,6 +136,7 @@ final class Bootstrap(
                         }
                         NotUsed
                       }
+                      .via(Protocol.ServerCommand.Encoder)
                   connection.handleWith(connectionFlow)
 
                 case Guardian.ConnectionAcceptedReply.Err(msg) =>
@@ -198,7 +164,7 @@ final class Bootstrap(
 
               shutdown.addTask(PhaseBeforeServiceUnbind, "before-unbind") { () =>
                 Future {
-                  dc.drainAndComplete()
+                  // dc.drainAndComplete()
                   system.log.info("★ ★ ★ before-unbind [draining existing connections]  ★ ★ ★")
                 }.flatMap { _ =>
                   akka.pattern.after(3.seconds) {

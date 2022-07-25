@@ -39,19 +39,17 @@ object Protocol:
     val Encoder = ScodecGlue.encoder(codec)
 
   enum ServerCommand:
-    case Welcome(usr: UserName, greetingMsg: String) extends ServerCommand
+    case Authorized(usr: UserName, greetingMsg: String) extends ServerCommand
     case Message(usr: UserName, text: String) extends ServerCommand
-    case Alert(text: String) extends ServerCommand
     case Disconnect(cause: String) extends ServerCommand
   end ServerCommand
 
   object ServerCommand:
     private val codec: Codec[ServerCommand] = discriminated[ServerCommand]
       .by(uint8)
-      .typecase(100, (username :: utf8_32).as[ServerCommand.Welcome])
-      .typecase(101, utf8_32.as[ServerCommand.Alert])
-      .typecase(102, (username :: utf8_32).as[ServerCommand.Message])
-      .typecase(103, utf8_32.as[ServerCommand.Disconnect])
+      .typecase(100, (username :: utf8_32).as[ServerCommand.Authorized])
+      .typecase(101, (username :: utf8_32).as[ServerCommand.Message])
+      .typecase(102, utf8_32.as[ServerCommand.Disconnect])
 
     val Encoder = ScodecGlue.encoder(codec)
     val Decoder = ScodecGlue.decoder(codec)

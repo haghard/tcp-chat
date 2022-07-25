@@ -8,11 +8,7 @@ final case class AppConfig(
   port: Int,
   bannedUsers: List[String],
   bannedHosts: List[String],
-  bufferSize: Int
-  //timeout: FiniteDuration,
-  //parallelism: Int,
-  //bufferSize: Int,
-  //passivationAfter: FiniteDuration
+  bufferSize: Int,
 )
 
 object bridge {
