@@ -33,7 +33,7 @@ import akka.stream.scaladsl.*
 import akka.stream.typed.scaladsl.ActorFlow
 import akka.util.ByteString
 import org.slf4j.Logger
-import shared.Protocol
+import shared.{ ChatUser, Protocol }
 import shared.Protocol.{ ClientCommand, ServerCommand }
 
 import java.net.InetSocketAddress
@@ -70,7 +70,7 @@ final class Bootstrap(
     Source
       .queue[ClientCommand](appCfg.bufferSize)
       .mapAsync(1) { clientCmd =>
-        // handle ask timeout
+        // FIXME: handle ask timeout
         guardian
           .ask[Guardian.ChatMsgReply](Guardian.GCmd.WrappedCmd(clientCmd, _))
           .map(_.serverCmd)(ExecutionContext.parasitic)
@@ -112,11 +112,18 @@ final class Bootstrap(
                       .Decoder
                       .takeWhile(
                         _.filter {
-                          case ClientCommand.SendMessage(_, msg) if msg == Bootstrap.clientQuit => false
-                          case _                                                                => true
+                          // FIXME: Introduce new, encripted message for clientQuit
+                          case ClientCommand.SendMessage(_, msg, _) if msg == Bootstrap.clientQuit => false
+                          case _                                                                   => true
                         }.isSuccess
                       )
-                      // .expand(Iterator.continually(_))
+                      .mapConcat {
+                        case Success(cmd) =>
+                          if (q.offer(cmd).isEnqueued) Nil else Bootstrap.Backpressured :: Nil
+                        case Failure(ex) =>
+                          Protocol.ServerCommand.Disconnect(ex.getMessage) :: Nil
+                      }
+                      /*
                       .statefulMapConcat { () => tryClientCommand =>
                         // 1.auth
                         // 2.keys
@@ -127,7 +134,7 @@ final class Bootstrap(
 
                           case Failure(ex) =>
                             Protocol.ServerCommand.Disconnect(ex.getMessage) :: Nil
-                      }
+                      }*/
                       .merge(broadcastSource, eagerComplete = true)
                       .watchTermination() { (_, done) =>
                         done.map { _ =>

@@ -6,7 +6,7 @@ package server
 
 import akka.actor.typed.scaladsl.{ ActorContext, Behaviors, StashBuffer }
 import akka.actor.typed.{ ActorRef, Behavior, DispatcherSelector, PostStop }
-import shared.Protocol
+import shared.{ ChatUser, Protocol }
 import shared.Protocol.{ ClientCommand, ServerCommand, UserName }
 
 import java.net.InetSocketAddress
@@ -33,7 +33,7 @@ object Guardian:
     case Disconnected(remoteAddress: InetSocketAddress) extends GCmd(CmdSource.Auth)
   end GCmd
 
-  def apply(appCfg: scala2.AppConfig): Behavior[GCmd[?]] =
+  def apply(appCfg: scala2.AppConfig, chatUser: ChatUser = ChatUser.generate()): Behavior[GCmd[?]] =
     // Behaviors.supervise()
     Behaviors
       .setup[GCmd[?]] { implicit ctx =>
@@ -50,7 +50,7 @@ object Guardian:
         ctx.log.info("banned-users: [{}]", appCfg.bannedUsers.mkString(","))
         ctx.log.info("★ ★ ★ ★ ★ ★ ★ ★ ★")
 
-        Behaviors.withStash(1 << 5)(implicit buf => active(State(appCfg)))
+        Behaviors.withStash(1 << 5)(implicit buf => active(State(appCfg, chatUser)))
       }
 
   def active(state: State)(using ctx: ActorContext[GCmd[?]], buf: StashBuffer[GCmd[?]]): Behavior[GCmd[?]] =
@@ -72,10 +72,12 @@ object Guardian:
         case cmd: GCmd.WrappedCmd =>
           cmd.clientCmd match
             case c: ClientCommand.SendMessage =>
-              ctx.log.info("{}: {}", c.usr, c.msg)
+              val upk = state.usersOnline.values.find(_._1 == c.usr).get._2
+              val msg = shared.crypto.Crypto.receiveAndDecrypt(c.content, c.sign, state.chatUser.priv, upk)
+              ctx.log.info("{}: {}", c.usr, msg)
               // if (ThreadLocalRandom.current().nextDouble() > .6) Thread.sleep(2_000)
 
-              cmd.replyTo.tell(state.msgReply(c.usr, c.msg))
+              cmd.replyTo.tell(state.msgReply(c.usr, c.content))
               Behaviors.same
             case c: ClientCommand.ShowAdvt =>
               cmd.replyTo.tell(state.msgReply(c.usr, c.msg))
@@ -99,9 +101,9 @@ object Guardian:
     Behaviors.receiveMessage[GCmd[?]] {
       case c @ GCmd.WrappedCmd(clientCmd, replyTo) =>
         clientCmd match
-          case ClientCommand.Authorize(usr) =>
+          case ClientCommand.Authorize(usr, pub) =>
             ctx.log.info("2.Authorize [{} - {}]", usr, address)
-            val (updatedState, reply) = state.authorize(usr)
+            val (updatedState, reply) = state.authorize(usr, pub)
             replyTo.tell(reply)
             reply match
               case _: ChatMsgReply.Error => ctx.log.info("2.Authorization [{} - {}] Error", usr, address)

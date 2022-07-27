@@ -17,29 +17,34 @@ object Protocol:
     extension (u: UserName)
       def length(): Int = u.length()
       def trim(): UserName = u.trim()
-      def inBanned(bannedUsers: List[String]): Boolean = bannedUsers.contains(u)
+      def inBanned(users: List[String]): Boolean = users.contains(u)
 
   private val username: Codec[UserName] =
     utf8_32.as[UserName]
 
   enum ClientCommand(userName: UserName):
-    case Authorize(usr: UserName) extends ClientCommand(usr)
-    case SendMessage(usr: UserName, msg: String) extends ClientCommand(usr)
+    case Authorize(usr: UserName, pub: String) extends ClientCommand(usr)
+    case SendMessage(
+        usr: UserName,
+        content: String,
+        sign: String) extends ClientCommand(usr)
     case ShowAdvt(usr: UserName = "advt", msg: String) extends ClientCommand(usr)
+    // case Quit(usr: UserName = "advt") extends ClientCommand(usr)
 
   end ClientCommand
 
   object ClientCommand:
     private val codec: Codec[ClientCommand] = discriminated[ClientCommand]
       .by(uint8)
-      .typecase(1, username.as[ClientCommand.Authorize])
-      .typecase(2, (username :: utf8_32).as[ClientCommand.SendMessage])
+      .typecase(1, (username :: utf8_32).as[ClientCommand.Authorize])
+      .typecase(2, (username :: utf8_32 :: utf8_32).as[ClientCommand.SendMessage])
       .typecase(3, (username :: utf8_32).as[ClientCommand.ShowAdvt])
+    // .typecase(4, username.as[ClientCommand.Quit])
     val Decoder = ScodecGlue.decoder(codec)
     val Encoder = ScodecGlue.encoder(codec)
 
   enum ServerCommand:
-    case Authorized(usr: UserName, greetingMsg: String) extends ServerCommand
+    case Authorized(usr: UserName, serverPub: String) extends ServerCommand
     case Message(usr: UserName, text: String) extends ServerCommand
     case Disconnect(cause: String) extends ServerCommand
   end ServerCommand
