@@ -111,13 +111,23 @@ object Handle:
 
 end Handle
 
-object Crypto:
+object cryptography:
   val algorithm = "SHA256withRSA"
   val cipherName = "RSA/ECB/OAEPWithSHA-256AndMGF1Padding"
   val limit = 190
 
   val cipher = Cipher.getInstance(cipherName)
   val sigAlg = java.security.Signature.getInstance(algorithm)
+
+  def readChunk0(
+      in: ByteArrayInputStream,
+      out: ByteArrayOutputStream,
+      buffer: Array[Byte],
+    ) =
+    LazyList
+      .continually(in.read(buffer))
+      .takeWhile(_ != -1)
+      .foreach(n => out.write(buffer, 0, n))
 
   @scala.annotation.tailrec
   private def readChunk(
@@ -181,7 +191,7 @@ object Crypto:
     println(s"$decryptedLine sign($signatureValid)")
     decryptedLine
 
-end Crypto
+end cryptography
 
 def md5sum(input: InputStream): String =
   val bis = new BufferedInputStream(input)
@@ -190,3 +200,11 @@ def md5sum(input: InputStream): String =
   LazyList.continually(bis.read(buf)).takeWhile(_ != -1).foreach(md5.update(buf, 0, _))
   md5.digest().map(0xff & _).map("%02x".format(_)).foldLeft("")(_ + _)
 end md5sum
+
+/** Return a nicely formatted byte string
+  */
+def bytes2Hex(bytes: Array[Byte]): String =
+  val sb = new StringBuilder
+  for (b <- bytes)
+    sb.append(String.format("%02X ", b: java.lang.Byte))
+  sb.toString

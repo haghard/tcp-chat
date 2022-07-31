@@ -4,6 +4,25 @@
 
 package scala2
 
+
+/*
+
+tcp-chat-room {
+  port = 2842
+  port = ${?PORT}
+
+  banned-users = [aa, bb, cc]
+
+  banned-hosts = [127.0.0.2, 127.0.0.3]
+
+  buffer-size = 128
+
+  jks-path = ./jks/chat.jks
+  jks-psw  = "open$sesam"
+}
+
+*/
+
 final case class AppConfig(
   port: Int,
   bannedUsers: List[String],

@@ -73,7 +73,7 @@ object Guardian:
           cmd.clientCmd match
             case c: ClientCommand.SendMessage =>
               val upk = state.usersOnline.values.find(_._1 == c.usr).get._2
-              val msg = shared.crypto.Crypto.receiveAndDecrypt(c.content, c.sign, state.chatUser.priv, upk)
+              val msg = shared.crypto.cryptography.receiveAndDecrypt(c.content, c.sign, state.chatUser.priv, upk)
               ctx.log.info("{}: {}", c.usr, msg)
               // if (ThreadLocalRandom.current().nextDouble() > .6) Thread.sleep(2_000)
 

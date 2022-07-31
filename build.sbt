@@ -107,8 +107,8 @@ lazy val root = project
       "com.typesafe.akka" %% "akka-slf4j"         % AkkaVersion,
       "org.scodec"        %% "scodec-core"        % "2.1.0",
       "com.madgag.spongycastle" % "core" % "1.58.0.0",
-      /*"org.bouncycastle" % "bcprov-jdk15on" % "1.70",
-      "org.bouncycastle" % "bcpkix-jdk15on" % "1.70",*/
+      "org.bouncycastle" % "bcprov-jdk15on" % "1.70",
+      "org.bouncycastle" % "bcpkix-jdk15on" % "1.70",
     ),
   )
   .aggregate(scala2).dependsOn(scala2)
