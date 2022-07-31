@@ -7,12 +7,6 @@ import java.math.BigInteger
 import java.security.cert.CertificateException
 import java.util.Date
 import javax.crypto.{ Cipher, KeyGenerator }
-import org.bouncycastle.asn1.x500.X500Name
-import org.bouncycastle.asn1.x509.SubjectPublicKeyInfo
-import org.bouncycastle.cert.X509v3CertificateBuilder
-import org.bouncycastle.cert.jcajce.JcaX509CertificateConverter
-import org.bouncycastle.operator.jcajce.JcaContentSignerBuilder
-import org.bouncycastle.jce.provider.BouncyCastleProvider
 
 import java.security.KeyPair
 import java.time.LocalDate
@@ -76,11 +70,11 @@ object SymmetricCryptography:
           throw new Exception("Encryption error", ex)
       finally
         if (out != null)
-          out.flush
-          out.close
+          out.flush()
+          out.close()
         if (cipherOut != null)
-          cipherOut.flush
-          cipherOut.close
+          cipherOut.flush()
+          cipherOut.close()
       out.toByteArray
 
   final class Decrypter(secretKey: javax.crypto.SecretKey, algorithm: String):
@@ -107,10 +101,10 @@ object SymmetricCryptography:
         case NonFatal(ex) =>
           throw new Exception("Decryption error", ex)
       finally
-        in.close
-        cipherIn.close
-        out.flush
-        out.close
+        in.close()
+        cipherIn.close()
+        out.flush()
+        out.close()
       out.toByteArray
 
   def getCryptography(
@@ -149,9 +143,8 @@ object SymmetricCryptography:
     // We tell KeyStore to create a new one by passing null as the first parameter
     ks.load(null, pwdArray)
 
-    // Save a Symmetric Key
     val secret = new KeyStore.SecretKeyEntry(secretKey)
-    println("Symmetric Key: " + shared.crypto.base64Encode(secret.getSecretKey.getEncoded))
+    // println("Symmetric Key: " + shared.crypto.base64Encode(secret.getSecretKey.getEncoded))
 
     val password = new KeyStore.PasswordProtection(pwdArray)
     ks.setEntry(keyEntryName, secret, password)

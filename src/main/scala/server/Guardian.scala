@@ -4,10 +4,10 @@
 
 package server
 
-import akka.actor.typed.scaladsl.{ActorContext, Behaviors, StashBuffer}
-import akka.actor.typed.{ActorRef, Behavior, DispatcherSelector, PostStop}
+import akka.actor.typed.scaladsl.{ ActorContext, Behaviors, StashBuffer }
+import akka.actor.typed.{ ActorRef, Behavior, DispatcherSelector, PostStop }
 import shared.Protocol
-import shared.Protocol.{ClientCommand, ServerCommand, UserName}
+import shared.Protocol.{ ClientCommand, ServerCommand, UserName }
 import shared.crypto.SymmetricCryptography
 
 import java.net.InetSocketAddress
@@ -79,7 +79,6 @@ object Guardian:
           cmd.clientCmd match
             case ClientCommand.SendMessage(usr, text) =>
               // println(s"$usr: $text")
-
               shared.crypto.base64Decode(text) match
                 case Some(bts) =>
                   val out = new String(state.decrypter.decrypt(bts), StandardCharsets.UTF_8)

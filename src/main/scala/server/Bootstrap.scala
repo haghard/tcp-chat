@@ -71,7 +71,7 @@ final class Bootstrap(
     Source
       .queue[ClientCommand](appCfg.bufferSize)
       .mapAsync(1) { clientCmd =>
-        // FIXME: handle ask timeout
+        //TODO: FIXME handle ask timeout
         guardian
           .ask[Guardian.ChatMsgReply](Guardian.GCmd.WrappedCmd(clientCmd, _))
           .map(_.serverCmd)(ExecutionContext.parasitic)
