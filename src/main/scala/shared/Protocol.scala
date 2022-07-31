@@ -28,7 +28,6 @@ object Protocol:
     case Authorize(usr: UserName, pub: String) extends ClientCommand(usr)
     case SendMessage(usr: UserName, text: String) extends ClientCommand(usr)
     case ShowAdvt(usr: UserName = "advt", msg: String) extends ClientCommand(usr)
-    // case Quit(usr: UserName = "advt") extends ClientCommand(usr)
 
   end ClientCommand
 
