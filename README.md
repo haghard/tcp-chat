@@ -13,6 +13,16 @@ Running the client connecting to the server:
 `sbt "runMain client.Client 127.0.0.1 3333 legorby"`
 
 
+Client commands:
+
+text send to all connected users
+
+`/users` lists logged in users.
+
+`/quit` disconnect and terminate client.
+
+
+
 ### TO DO 
 
 Grpc and websocket

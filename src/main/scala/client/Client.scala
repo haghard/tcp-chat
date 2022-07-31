@@ -15,9 +15,9 @@ import akka.stream.scaladsl.Source
 import akka.stream.scaladsl.Tcp
 import akka.stream.typed.scaladsl.ActorSink
 import akka.util.ByteString
-import shared.{ ChatUser, Protocol }
+import shared.Protocol
 import shared.Protocol.{ ClientCommand, ServerCommand, UserName }
-import shared.Protocol.ClientCommand.SendMessage
+import shared.crypto.SymmetricCryptography
 
 import java.io.{ ByteArrayInputStream, ByteArrayOutputStream }
 import java.nio.charset.StandardCharsets
@@ -36,23 +36,18 @@ import compiletime.asMatchable
 
 object Client:
 
-  private val serverCommandToString = Flow[Try[ServerCommand]].map {
-    case Success(serverCmd) =>
-      serverCmd match
-        case ServerCommand.Authorized(user, serverPub) =>
-          // Alice owns server's public key, so they can use it to encrypt thi messages
-          // val servPub = ChatUser.recoverFromPubKey(serverPub).get
-          s"Logged in as $user"
-        case ServerCommand.Message(user, msg) => s"$user: $msg"
-        case ServerCommand.Disconnect(cause)  => s"Server disconnected because: $cause"
-    case Failure(ex) =>
-      s"Error parsing server command: ${ex.getMessage}"
-  }
-
-  val serverCommand = Flow[ServerCommand].map {
-    case ServerCommand.Authorized(user, _) => s"Logged in as $user"
-    case ServerCommand.Message(user, msg)  => s"$user: $msg"
-    case ServerCommand.Disconnect(cause)   => s"Server disconnected because: $cause"
+  def serverCommand(decrypter: SymmetricCryptography.Decrypter) = Flow[ServerCommand].map {
+    case ServerCommand.Authorized(user, _) =>
+      s"Logged in as $user"
+    case ServerCommand.Message(user, msg) =>
+      shared.crypto.base64Decode(msg) match
+        case Some(bts) =>
+          val out = new String(decrypter.decrypt(bts), StandardCharsets.UTF_8)
+          s"$user: $out"
+        case None =>
+          throw new Exception("Decrypt error !!!")
+    case ServerCommand.Disconnect(cause) =>
+      s"Server disconnected because: $cause"
   }
 
   def main(args: Array[String]): Unit =
@@ -80,36 +75,30 @@ object Client:
     ): Future[Done] =
     import system.dispatcher
 
-    val user = ChatUser.generate()
+    val (encrypter, decrypter) =
+      shared.crypto.SymmetricCryptography.getCryptography("./jks/chat.jks", "open$sesam")
 
-    val promisedKey = Promise[RSAPublicKey]()
+    val authorized = scala.concurrent.Promise[Unit]()
 
     val commandsIn =
-      Source.future(promisedKey.future).flatMapConcat { serverPubKey =>
+      Source.future(authorized.future).flatMapConcat { _ =>
         Source
           .unfoldResource[String, Iterator[String]](
             () => Iterator.continually(StdIn.readLine("> ")),
             iterator => Some(iterator.next()),
             _ => (),
           )
-          .map(msg => shared.crypto.cryptography.encryptAndSend(username, msg, user.priv, serverPubKey))
+          .map { msg =>
+            ClientCommand.SendMessage(
+              username,
+              shared.crypto.base64Encode(encrypter.encrypt(msg.getBytes(StandardCharsets.UTF_8))),
+            )
+          }
       }
-
-    /*val commandsIn =
-      Source
-        .unfoldResource[String, Iterator[String]](
-          () => Iterator.continually(StdIn.readLine("> ")),
-          iterator => Some(iterator.next()),
-          _ => (),
-        )
-        .map { msg =>
-          while (serverPub.get() == null) LockSupport.parkNanos(300_000_000)
-          shared.crypto.cryptography.encryptAndSend(username, msg, user.priv, serverPub.get())
-        }*/
 
     val in =
       Source
-        .single(ClientCommand.Authorize(username, user.asX509))
+        .single(ClientCommand.Authorize(username, "secret"))
         .concat(commandsIn)
         .via(ClientCommand.Encoder)
 
@@ -119,18 +108,16 @@ object Client:
         .Decoder
         .takeWhile(!_.toOption.exists(_.isInstanceOf[ServerCommand.Disconnect]), inclusive = true)
         .collect { case Success(v) => v }
-        .scan((Option.empty[RSAPublicKey], null.asInstanceOf[ServerCommand])) { (acc, c) =>
+        .scan((false, null.asInstanceOf[ServerCommand])) { (acc, c) =>
           c.asMatchable match
-            case ServerCommand.Authorized(_, serverPub) => (ChatUser.recoverPubKey(serverPub), c)
-            case _: ServerCommand                       => (acc._1, c)
+            case a: ServerCommand.Authorized =>
+              authorized.trySuccess(())
+              (true, a)
+            case _: ServerCommand =>
+              (acc._1, c)
         }
-        .collect {
-          case (Some(pk), c) =>
-            promisedKey.trySuccess(pk)
-            // serverPub.compareAndSet(null, pk)
-            c
-        }
-        // .via(serverCommandToString)
+        .collect { case (true, c) => c }
+        .via(serverCommand(decrypter))
         .concat(Source.single("Disconnected from server"))
         .toMat(Sink.foreach(msg => println(s"$GREEN_B$BOLD$WHITE $msg $RESET")))(Keep.right)
 

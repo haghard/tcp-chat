@@ -2,31 +2,30 @@ package server
 
 import java.security.interfaces.RSAPublicKey
 import server.Guardian.{ ChatMsgReply, ConnectionAcceptedReply }
-import shared.{ ChatUser, Protocol }
+import shared.Protocol
 import shared.Protocol.{ ServerCommand, UserName }
+import shared.crypto.SymmetricCryptography
 
 import java.net.InetSocketAddress
 
 final case class State(
     appCfg: scala2.AppConfig,
-    chatUser: ChatUser,
+    decrypter: SymmetricCryptography.Decrypter,
+    ecrypter: SymmetricCryptography.Encrypter,
     pendingAddress: Option[InetSocketAddress] = None,
-    usersOnline: Map[InetSocketAddress, (UserName, RSAPublicKey)] = Map.empty):
+    usersOnline: Map[InetSocketAddress, UserName] = Map.empty):
   self =>
 
-  def authorize(usr: UserName, pub: String): (State, ChatMsgReply) =
+  def authorize(usr: UserName, pws: String): (State, ChatMsgReply) =
     if (usr.inBanned(appCfg.bannedUsers))
-      (copy(pendingAddress = None), ChatMsgReply.Error(ServerCommand.Disconnect(s"Auth $usr error. Banned")))
+      (copy(pendingAddress = None), ChatMsgReply.Error(ServerCommand.Disconnect(s"Auth($usr) error: Banned")))
+    else if (pws != "secret")
+      (copy(pendingAddress = None), ChatMsgReply.Error(ServerCommand.Disconnect(s"Auth($usr) error: Wrong psw")))
     else
       pendingAddress match
         case Some(remoteAddress) =>
-          ChatUser.recoverPubKey(pub) match
-            case Some(pub) =>
-              val s = copy(pendingAddress = None, usersOnline + (remoteAddress -> (usr, pub)))
-              (s, ChatMsgReply.Broadcast(ServerCommand.Authorized(usr, chatUser.asX509 /*s"Authorized $usr"*/ )))
-            case None =>
-              (copy(pendingAddress = None), ChatMsgReply.Error(ServerCommand.Disconnect(s"Auth $usr error. Key error")))
-
+          val s = copy(pendingAddress = None, usersOnline + (remoteAddress -> usr))
+          (s, ChatMsgReply.Broadcast(ServerCommand.Authorized(usr, s"Authorized $usr")))
         case None =>
           println("This should never happen !!!")
           (self, ChatMsgReply.Error(ServerCommand.Disconnect("Invalid state")))

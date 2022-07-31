@@ -7,6 +7,7 @@ package shared
 import scodec.Codec
 import scodec.codecs.*
 import server.ScodecGlue
+import shared.crypto.SymmetricCryptography
 
 object Protocol:
 
@@ -24,22 +25,23 @@ object Protocol:
 
   enum ClientCommand(userName: UserName):
     case Authorize(usr: UserName, pub: String) extends ClientCommand(usr)
-    case SendMessage(
-        usr: UserName,
-        content: String,
-        sign: String) extends ClientCommand(usr)
+    case SendMessage(usr: UserName, text: String) extends ClientCommand(usr)
     case ShowAdvt(usr: UserName = "advt", msg: String) extends ClientCommand(usr)
     // case Quit(usr: UserName = "advt") extends ClientCommand(usr)
 
   end ClientCommand
 
   object ClientCommand:
+
+    val Quit = "/quit"
+    val List = "/users"
+    val Backpressured = Protocol.ServerCommand.Disconnect("Backpressured")
+
     private val codec: Codec[ClientCommand] = discriminated[ClientCommand]
       .by(uint8)
       .typecase(1, (username :: utf8_32).as[ClientCommand.Authorize])
-      .typecase(2, (username :: utf8_32 :: utf8_32).as[ClientCommand.SendMessage])
+      .typecase(2, (username :: utf8_32).as[ClientCommand.SendMessage])
       .typecase(3, (username :: utf8_32).as[ClientCommand.ShowAdvt])
-    // .typecase(4, username.as[ClientCommand.Quit])
     val Decoder = ScodecGlue.decoder(codec)
     val Encoder = ScodecGlue.encoder(codec)
 

@@ -4,12 +4,14 @@
 
 package server
 
-import akka.actor.typed.scaladsl.{ ActorContext, Behaviors, StashBuffer }
-import akka.actor.typed.{ ActorRef, Behavior, DispatcherSelector, PostStop }
-import shared.{ ChatUser, Protocol }
-import shared.Protocol.{ ClientCommand, ServerCommand, UserName }
+import akka.actor.typed.scaladsl.{ActorContext, Behaviors, StashBuffer}
+import akka.actor.typed.{ActorRef, Behavior, DispatcherSelector, PostStop}
+import shared.Protocol
+import shared.Protocol.{ClientCommand, ServerCommand, UserName}
+import shared.crypto.SymmetricCryptography
 
 import java.net.InetSocketAddress
+import java.nio.charset.StandardCharsets
 import java.util.concurrent.ThreadLocalRandom
 
 object Guardian:
@@ -33,7 +35,11 @@ object Guardian:
     case Disconnected(remoteAddress: InetSocketAddress) extends GCmd(CmdSource.Auth)
   end GCmd
 
-  def apply(appCfg: scala2.AppConfig, chatUser: ChatUser = ChatUser.generate()): Behavior[GCmd[?]] =
+  def apply(
+      appCfg: scala2.AppConfig,
+      ecrypter: SymmetricCryptography.Encrypter,
+      decrypter: SymmetricCryptography.Decrypter,
+    ): Behavior[GCmd[?]] =
     // Behaviors.supervise()
     Behaviors
       .setup[GCmd[?]] { implicit ctx =>
@@ -50,7 +56,7 @@ object Guardian:
         ctx.log.info("banned-users: [{}]", appCfg.bannedUsers.mkString(","))
         ctx.log.info("★ ★ ★ ★ ★ ★ ★ ★ ★")
 
-        Behaviors.withStash(1 << 5)(implicit buf => active(State(appCfg, chatUser)))
+        Behaviors.withStash(1 << 5)(implicit buf => active(State(appCfg, decrypter, ecrypter)))
       }
 
   def active(state: State)(using ctx: ActorContext[GCmd[?]], buf: StashBuffer[GCmd[?]]): Behavior[GCmd[?]] =
@@ -71,13 +77,44 @@ object Guardian:
 
         case cmd: GCmd.WrappedCmd =>
           cmd.clientCmd match
-            case c: ClientCommand.SendMessage =>
-              val upk = state.usersOnline.values.find(_._1 == c.usr).get._2
-              val msg = shared.crypto.cryptography.receiveAndDecrypt(c.content, c.sign, state.chatUser.priv, upk)
-              ctx.log.info("{}: {}", c.usr, msg)
-              // if (ThreadLocalRandom.current().nextDouble() > .6) Thread.sleep(2_000)
+            case ClientCommand.SendMessage(usr, text) =>
+              // println(s"$usr: $text")
 
-              cmd.replyTo.tell(state.msgReply(c.usr, c.content))
+              shared.crypto.base64Decode(text) match
+                case Some(bts) =>
+                  val out = new String(state.decrypter.decrypt(bts), StandardCharsets.UTF_8)
+                  if (out == Protocol.ClientCommand.List)
+                    cmd
+                      .replyTo
+                      .tell(
+                        ChatMsgReply.Broadcast(
+                          Protocol
+                            .ServerCommand
+                            .Message(
+                              usr,
+                              shared
+                                .crypto
+                                .base64Encode(
+                                  state
+                                    .ecrypter
+                                    .encrypt(
+                                      state
+                                        .usersOnline
+                                        .values
+                                        .map(_.trim())
+                                        .mkString(",")
+                                        .getBytes(StandardCharsets.UTF_8)
+                                    )
+                                ),
+                            )
+                        )
+                      )
+                  else
+                    cmd.replyTo.tell(state.msgReply(usr, text))
+
+                case None =>
+                  throw new Exception("Decrypt error !!!")
+
               Behaviors.same
             case c: ClientCommand.ShowAdvt =>
               cmd.replyTo.tell(state.msgReply(c.usr, c.msg))

@@ -1,3 +1,5 @@
+/*
+
 package shared.crypto
 
 import java.util
@@ -111,88 +113,6 @@ object Handle:
 
 end Handle
 
-object cryptography:
-  val algorithm = "SHA256withRSA"
-  val cipherName = "RSA/ECB/OAEPWithSHA-256AndMGF1Padding"
-  val limit = 190
-
-  val cipher = Cipher.getInstance(cipherName)
-  val sigAlg = java.security.Signature.getInstance(algorithm)
-
-  def readChunk0(
-      in: ByteArrayInputStream,
-      out: ByteArrayOutputStream,
-      buffer: Array[Byte],
-    ) =
-    LazyList
-      .continually(in.read(buffer))
-      .takeWhile(_ != -1)
-      .foreach(n => out.write(buffer, 0, n))
-
-  @scala.annotation.tailrec
-  private def readChunk(
-      in: ByteArrayInputStream,
-      out: ByteArrayOutputStream,
-      buffer: Array[Byte],
-    ): Unit =
-    in.read(buffer) match
-      case -1 => ()
-      case n =>
-        out.write(buffer, 0, n)
-        readChunk(in, out, buffer)
-
-  def encryptAndSend(
-      username: UserName,
-      content: String,
-      senderPrivKey: PrivateKey,
-      serverPubKey: PublicKey,
-    ): ClientCommand.SendMessage =
-    // encrypt using receiver's public key
-    cipher.init(Cipher.ENCRYPT_MODE, serverPubKey)
-
-    val msgBts = content.getBytes(StandardCharsets.UTF_8)
-    println("Original msg: " + content + " size:" + msgBts.size)
-
-    val cipherBts =
-      Using.resources(new ByteArrayInputStream(msgBts), new ByteArrayOutputStream()) { (in, out) =>
-        readChunk(in, out, Array.ofDim[Byte](limit))
-        out.toByteArray
-      }
-
-    // sigh using sender's private key
-    sigAlg.initSign(senderPrivKey)
-    sigAlg.update(msgBts)
-    val signatureBts = sigAlg.sign
-    ClientCommand.SendMessage(username, shared.crypto.base64Encode(cipherBts), shared.crypto.base64Encode(signatureBts))
-  end encryptAndSend
-
-  def receiveAndDecrypt(
-      content: String,
-      sign: String,
-      receiverPrivKey: PrivateKey,
-      senderPubKey: PublicKey,
-    ): String =
-    // decrypt using receiver's private key
-    cipher.init(Cipher.DECRYPT_MODE, receiverPrivKey)
-    val encBts = base64Decode(content).get
-    val decryptedBts =
-      Using.resources(new ByteArrayInputStream(encBts), new ByteArrayOutputStream()) { (in, out) =>
-        readChunk(in, out, Array.ofDim[Byte](limit))
-        out.toByteArray
-      }
-
-    // Verify signature using sender's public key
-    sigAlg.initVerify(senderPubKey)
-    sigAlg.update(decryptedBts)
-
-    val decryptedLine = new String(decryptedBts, StandardCharsets.UTF_8)
-    val signatureValid = sigAlg.verify(base64Decode(sign).get)
-
-    println(s"$decryptedLine sign($signatureValid)")
-    decryptedLine
-
-end cryptography
-
 def md5sum(input: InputStream): String =
   val bis = new BufferedInputStream(input)
   val buf = new Array[Byte](1024)
@@ -200,11 +120,4 @@ def md5sum(input: InputStream): String =
   LazyList.continually(bis.read(buf)).takeWhile(_ != -1).foreach(md5.update(buf, 0, _))
   md5.digest().map(0xff & _).map("%02x".format(_)).foldLeft("")(_ + _)
 end md5sum
-
-/** Return a nicely formatted byte string
-  */
-def bytes2Hex(bytes: Array[Byte]): String =
-  val sb = new StringBuilder
-  for (b <- bytes)
-    sb.append(String.format("%02X ", b: java.lang.Byte))
-  sb.toString
+ */

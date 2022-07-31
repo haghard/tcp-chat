@@ -9,6 +9,7 @@ import akka.actor.typed.scaladsl.Behaviors
 import akka.actor.typed.{ ActorRef, ActorSystem, Props, Scheduler, SpawnProtocol }
 import com.typesafe.config.ConfigFactory
 
+import java.nio.charset.StandardCharsets
 import scala.concurrent.duration.*
 import scala.util.Try
 
@@ -30,6 +31,17 @@ object Main extends Ops:
 
     system.log.warn(system.printTree)
 
-    new Bootstrap(host, port, appCfg).runTcpServer()
+    // To create JKS
+    // shared.crypto.SymmetricCryptography.createJKS(appCfg.jksPath, appCfg.jksPsw)
+
+    val (ecrypter, decrypter) =
+      shared.crypto.SymmetricCryptography.getCryptography(appCfg.jksPath, appCfg.jksPsw)
+
+    /*val in = shared.crypto.base64Encode(encrypter.encrypt("Hello asdsdfs 234123 asdf ".getBytes(StandardCharsets.UTF_8)))
+    shared.crypto.base64Decode(in).foreach { t =>
+      println("******************" + new String(decrypter.decrypt(t), StandardCharsets.UTF_8))
+    }*/
+
+    new Bootstrap(host, port, appCfg, ecrypter, decrypter).runTcpServer()
 
   end main

@@ -28,6 +28,8 @@ final case class AppConfig(
   bannedUsers: List[String],
   bannedHosts: List[String],
   bufferSize: Int,
+  jksPath: String,
+  jksPsw: String
 )
 
 object bridge {

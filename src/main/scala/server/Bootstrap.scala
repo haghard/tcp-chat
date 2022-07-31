@@ -33,22 +33,23 @@ import akka.stream.scaladsl.*
 import akka.stream.typed.scaladsl.ActorFlow
 import akka.util.ByteString
 import org.slf4j.Logger
-import shared.{ ChatUser, Protocol }
+import shared.Protocol
 import shared.Protocol.{ ClientCommand, ServerCommand }
+import shared.crypto.SymmetricCryptography
 
 import java.net.InetSocketAddress
+import java.nio.charset.StandardCharsets
 import scala.util.{ Failure, Success }
 
 object Bootstrap:
   case object BindFailure extends Reason
 
-  val clientQuit = "/quit"
-  val Backpressured = Protocol.ServerCommand.Disconnect("Backpressured")
-
 final class Bootstrap(
     host: String,
     port: Int,
     appCfg: scala2.AppConfig,
+    ecrypter: SymmetricCryptography.Encrypter,
+    decrypter: SymmetricCryptography.Decrypter,
   )(using system: ActorSystem[SpawnProtocol.Command]):
 
   given ec: ExecutionContext = system.executionContext
@@ -84,7 +85,7 @@ final class Bootstrap(
   def runTcpServer(): Unit =
     system
       .ask((ref: ActorRef[ActorRef[Guardian.GCmd[?]]]) =>
-        SpawnProtocol.Spawn(Guardian(appCfg), "guardian", Props.empty, ref)
+        SpawnProtocol.Spawn(Guardian(appCfg, ecrypter, decrypter), "guardian", Props.empty, ref)
       )
       .foreach { guardian =>
 
@@ -112,14 +113,19 @@ final class Bootstrap(
                       .Decoder
                       .takeWhile(
                         _.filter {
-                          // FIXME: Introduce new, encripted message for clientQuit
-                          case ClientCommand.SendMessage(_, msg, _) if msg == Bootstrap.clientQuit => false
-                          case _                                                                   => true
+                          case ClientCommand.SendMessage(_, msg) =>
+                            shared.crypto.base64Decode(msg) match
+                              case Some(bts) =>
+                                !(new String(decrypter.decrypt(bts), StandardCharsets.UTF_8) == ClientCommand.Quit)
+                              case None =>
+                                system.log.error(s"Decrypter($msg) error")
+                                false
+                          case _ => true
                         }.isSuccess
                       )
                       .mapConcat {
                         case Success(cmd) =>
-                          if (q.offer(cmd).isEnqueued) Nil else Bootstrap.Backpressured :: Nil
+                          if (q.offer(cmd).isEnqueued) Nil else ClientCommand.Backpressured :: Nil
                         case Failure(ex) =>
                           Protocol.ServerCommand.Disconnect(ex.getMessage) :: Nil
                       }
