@@ -98,7 +98,7 @@ object Client:
 
     val in =
       Source
-        .single(ClientCommand.Authorize(username, "secret"))
+        .single(ClientCommand.Authorize(username, "secret")) // TODO: enctipt
         .concat(commandsIn)
         .via(ClientCommand.Encoder)
 

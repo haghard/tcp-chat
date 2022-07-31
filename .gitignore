@@ -16,7 +16,7 @@ modules.xml
 .DS_Store
 *.class
 *~
-
+/jks
 # sbt specific
 logs
 dist/*

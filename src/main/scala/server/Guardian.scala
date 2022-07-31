@@ -100,7 +100,7 @@ object Guardian:
                                       state
                                         .usersOnline
                                         .values
-                                        .map(_.trim())
+                                        .map(_.toString())
                                         .mkString(",")
                                         .getBytes(StandardCharsets.UTF_8)
                                     )

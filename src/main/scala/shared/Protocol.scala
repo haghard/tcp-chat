@@ -18,6 +18,7 @@ object Protocol:
     extension (u: UserName)
       def length(): Int = u.length()
       def trim(): UserName = u.trim()
+      def toString(): String = u.toString()
       def inBanned(users: List[String]): Boolean = users.contains(u)
 
   private val username: Codec[UserName] =
