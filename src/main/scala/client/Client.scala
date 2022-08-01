@@ -33,22 +33,9 @@ import scala.util.Success
 import scala.util.Try
 import scala.Console.*
 import compiletime.asMatchable
+import akka.actor.typed.scaladsl.adapter.ClassicActorSystemOps
 
 object Client:
-
-  def serverCommand(decrypter: SymmetricCryptography.Decrypter) = Flow[ServerCommand].map {
-    case ServerCommand.Authorized(user, _) =>
-      s"Logged in as $user"
-    case ServerCommand.Message(user, msg) =>
-      shared.crypto.base64Decode(msg) match
-        case Some(bts) =>
-          val out = new String(decrypter.decrypt(bts), StandardCharsets.UTF_8)
-          s"$user: $out"
-        case None =>
-          throw new Exception("Decrypt error !!!")
-    case ServerCommand.Disconnect(cause) =>
-      s"Server disconnected because: $cause"
-  }
 
   def main(args: Array[String]): Unit =
     implicit val system = ActorSystem("client")
@@ -75,10 +62,12 @@ object Client:
     ): Future[Done] =
     import system.dispatcher
 
+    //
     val (encrypter, decrypter) =
       shared.crypto.SymmetricCryptography.getCryptography("./jks/chat.jks", "open$sesam")
 
-    val authorized = scala.concurrent.Promise[Unit]()
+    val authorized = Promise[akka.Done]()
+    val sinkCompleted = Promise[akka.Done]()
 
     val commandsIn =
       Source.future(authorized.future).flatMapConcat { _ =>
@@ -98,39 +87,40 @@ object Client:
 
     val in =
       Source
-        .single(ClientCommand.Authorize(username, "secret")) // TODO: enctipt
+        .single(ClientCommand.Authorize(username, "secret")) // TODO: encrypt
         .concat(commandsIn)
         .via(ClientCommand.Encoder)
 
-    val out: Sink[ByteString, Future[akka.Done]] =
+    val sinkActor: Sink[ServerCommand, akka.NotUsed] =
+      ActorSink.actorRefWithBackpressure(
+        system.spawn(ChatClient(authorized, sinkCompleted, decrypter), username.toString()),
+        ChatClient.Protocol.NextCmd(_, _),
+        ChatClient.Protocol.Connect(_),
+        ChatClient.Ack,
+        onCompleteMessage = ChatClient.Protocol.Complete,
+        onFailureMessage = ChatClient.Protocol.Fail(_),
+      )
+
+    val out: Sink[ByteString, akka.NotUsed] =
       // Flow[ByteString].delay(2.seconds).via(ServerCommand.Decoder)
       ServerCommand
         .Decoder
         .takeWhile(!_.toOption.exists(_.isInstanceOf[ServerCommand.Disconnect]), inclusive = true)
-        .collect { case Success(v) => v }
-        .scan((false, null.asInstanceOf[ServerCommand])) { (acc, c) =>
-          c.asMatchable match
-            case a: ServerCommand.Authorized =>
-              authorized.trySuccess(())
-              (true, a)
-            case _: ServerCommand =>
-              (acc._1, c)
+        .map {
+          case Success(serverCmd) => serverCmd
+          case Failure(ex)        => throw ex
         }
-        .collect { case (true, c) => c }
-        .via(serverCommand(decrypter))
-        .concat(Source.single("Disconnected from server"))
-        .toMat(Sink.foreach(msg => println(s"$GREEN_B$BOLD$WHITE $msg $RESET")))(Keep.right)
+        .to(sinkActor)
 
-    val (connected, done) = in
+    val connected = in
       .viaMat(Tcp(system).outgoingConnection(host, port))(Keep.right)
-      .toMat(out)(Keep.both)
+      .toMat(out)(Keep.left)
       .run()
-    // ActorSink.actorRefWithBackpressure()
 
     connected.foreach { con =>
       println(s"Connected to ${con.remoteAddress.getHostString}:${con.remoteAddress.getPort}")
     }
 
-    done
+    sinkCompleted.future
 
 end Client
