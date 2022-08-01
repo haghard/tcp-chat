@@ -106,10 +106,7 @@ object Client:
       ServerCommand
         .Decoder
         .takeWhile(!_.toOption.exists(_.isInstanceOf[ServerCommand.Disconnect]), inclusive = true)
-        .map {
-          case Success(serverCmd) => serverCmd
-          case Failure(ex)        => throw ex
-        }
+        .map(_.fold(ex => throw ex, identity))
         .to(sinkActor)
 
     val connected = in

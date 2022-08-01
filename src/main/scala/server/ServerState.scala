@@ -27,8 +27,8 @@ final case class ServerState(
           val s = copy(pendingAddress = None, usersOnline + (remoteAddress -> usr))
           (s, ChatMsgReply.Broadcast(ServerCommand.Authorized(usr, s"Authorized $usr")))
         case None =>
-          println("This should never happen !!!")
-          (self, ChatMsgReply.Error(ServerCommand.Disconnect("Invalid state")))
+          // println("This should never happen !!!")
+          (self, ChatMsgReply.Error(ServerCommand.Disconnect("This should never happen. Invalid state!")))
 
   def disconnect(remoteAddress: InetSocketAddress): ServerState =
     self.copy(pendingAddress = None, usersOnline - remoteAddress)

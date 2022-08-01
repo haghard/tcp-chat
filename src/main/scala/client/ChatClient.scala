@@ -29,7 +29,8 @@ object ChatClient:
     ): Behavior[Protocol] =
     Behaviors.setup { ctx =>
       given logger: Logger = ctx.log
-      Behaviors.withStash(4) { buf =>
+
+      Behaviors.withStash(1 << 2) { buf =>
         Behaviors.receiveMessage {
           case Protocol.Connect(ackTo) =>
             ackTo.tell(Ack)
@@ -52,7 +53,7 @@ object ChatClient:
       case c @ Protocol.NextCmd(ackTo, cmd) =>
         cmd match
           case ServerCommand.Authorized(user, _) =>
-            println(s"$GREEN_B$BOLD$WHITE Logger in as $user $RESET")
+            println(s"$RED_B$BOLD$WHITE Logger in as $user $RESET")
             auth.trySuccess(akka.Done)
             ackTo.tell(Ack)
             buf.unstashAll(active(done, dec))

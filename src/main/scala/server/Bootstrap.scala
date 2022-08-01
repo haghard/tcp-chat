@@ -84,7 +84,7 @@ final class Bootstrap(
 
   def runTcpServer(): Unit =
     system
-      .ask((ref: ActorRef[ActorRef[Guardian.GCmd[?]]]) =>
+      .ask((ref: ActorRef[ActorRef[Guardian.GCmd]]) =>
         SpawnProtocol.Spawn(Guardian(appCfg, cryptography), "guardian", Props.empty, ref)
       )
       .foreach { guardian =>
@@ -145,6 +145,7 @@ final class Bootstrap(
                             Protocol.ServerCommand.Disconnect(ex.getMessage) :: Nil
                       }*/
                       .merge(broadcastSource, eagerComplete = true)
+                      .via(Protocol.ServerCommand.Encoder)
                       .watchTermination() { (_, done) =>
                         done.map { _ =>
                           logger.info(s"Connection from ${remote.getHostString}:${remote.getPort} has been terminated")
@@ -152,7 +153,7 @@ final class Bootstrap(
                         }
                         NotUsed
                       }
-                      .via(Protocol.ServerCommand.Encoder)
+
                   connection.handleWith(connectionFlow)
 
                 case Guardian.ConnectionAcceptedReply.Err(msg) =>

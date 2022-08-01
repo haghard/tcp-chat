@@ -26,24 +26,19 @@ object Guardian:
     case Broadcast(cmd: ServerCommand) extends ChatMsgReply(cmd)
     case Error(cmd: ServerCommand) extends ChatMsgReply(cmd)
 
-  enum CmdSource:
-    case Chat, Auth
-
-  enum GCmd[T <: CmdSource & Singleton](val cmdType: T):
-    case WrappedCmd(clientCmd: ClientCommand, replyTo: ActorRef[ChatMsgReply]) extends GCmd(CmdSource.Chat)
-
-    case Accept(remoteAddress: InetSocketAddress, replyTo: ActorRef[ConnectionAcceptedReply])
-        extends GCmd(CmdSource.Auth)
-    case Disconnected(remoteAddress: InetSocketAddress) extends GCmd(CmdSource.Auth)
+  enum GCmd:
+    case WrappedCmd(clientCmd: ClientCommand, replyTo: ActorRef[ChatMsgReply]) extends GCmd
+    case Accept(remoteAddress: InetSocketAddress, replyTo: ActorRef[ConnectionAcceptedReply]) extends GCmd
+    case Disconnected(remoteAddress: InetSocketAddress) extends GCmd
   end GCmd
 
   def apply(
       appCfg: scala2.AppConfig,
       cryptography: Cryptography,
-    ): Behavior[GCmd[?]] =
+    ): Behavior[GCmd] =
     // Behaviors.supervise()
     Behaviors
-      .setup[GCmd[?]] { implicit ctx =>
+      .setup[GCmd] { implicit ctx =>
         // ctx.system.receptionist
         ctx
           .log
@@ -60,9 +55,9 @@ object Guardian:
         Behaviors.withStash(1 << 5)(implicit buf => active(ServerState(appCfg, cryptography)))
       }
 
-  def active(state: ServerState)(using ctx: ActorContext[GCmd[?]], buf: StashBuffer[GCmd[?]]): Behavior[GCmd[?]] =
+  def active(state: ServerState)(using ctx: ActorContext[GCmd], buf: StashBuffer[GCmd]): Behavior[GCmd] =
     Behaviors
-      .receiveMessage[GCmd[?]] {
+      .receiveMessage[GCmd] {
         case GCmd.Accept(address, replyTo) =>
           ctx.log.info("1.Accept: {} - {}", address, state)
           val (updatedState, reply) = state.acceptCon(address)
@@ -133,10 +128,10 @@ object Guardian:
   def authorizeUser(
       address: InetSocketAddress,
       state: ServerState,
-    )(using ctx: ActorContext[GCmd[?]],
-      buf: StashBuffer[GCmd[?]],
-    ): Behavior[GCmd[?]] =
-    Behaviors.receiveMessage[GCmd[?]] {
+    )(using ctx: ActorContext[GCmd],
+      buf: StashBuffer[GCmd],
+    ): Behavior[GCmd] =
+    Behaviors.receiveMessage[GCmd] {
       case c @ GCmd.WrappedCmd(clientCmd, replyTo) =>
         clientCmd match
           case ClientCommand.Authorize(usr, pub) =>
