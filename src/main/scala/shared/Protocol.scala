@@ -19,6 +19,7 @@ object Protocol:
       def length(): Int = u.length()
       def trim(): UserName = u.trim()
       def toString(): String = u.toString()
+      def !==(other: UserName): Boolean = u != other
       def inBanned(users: List[String]): Boolean = users.contains(u)
 
   private val username: Codec[UserName] =

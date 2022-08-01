@@ -3,7 +3,7 @@ package client
 import akka.actor.typed.{ ActorRef, Behavior }
 import akka.actor.typed.scaladsl.{ Behaviors, StashBuffer }
 import org.slf4j.Logger
-import shared.Protocol.ServerCommand
+import shared.Protocol.{ ServerCommand, UserName }
 import shared.crypto.SymmetricCryptography
 
 import java.nio.charset.StandardCharsets
@@ -23,6 +23,7 @@ object ChatClient:
     case Fail(ex: Throwable) extends Protocol
 
   def apply(
+      username: UserName,
       authorized: Promise[akka.Done],
       done: Promise[akka.Done],
       dec: SymmetricCryptography.Decrypter,
@@ -34,7 +35,7 @@ object ChatClient:
         Behaviors.receiveMessage {
           case Protocol.Connect(ackTo) =>
             ackTo.tell(Ack)
-            awaitAuth(authorized, done, dec, buf)
+            awaitAuth(username, authorized, done, dec, buf)
           case other =>
             buf.stash(other)
             Behaviors.same
@@ -43,6 +44,7 @@ object ChatClient:
     }
 
   def awaitAuth(
+      username: UserName,
       auth: Promise[akka.Done],
       done: Promise[akka.Done],
       dec: SymmetricCryptography.Decrypter,
@@ -56,7 +58,7 @@ object ChatClient:
             println(s"$RED_B$BOLD$WHITE Logger in as $user $RESET")
             auth.trySuccess(akka.Done)
             ackTo.tell(Ack)
-            buf.unstashAll(active(done, dec))
+            buf.unstashAll(active(username, done, dec))
           case _ =>
             buf.stash(c)
             Behaviors.same
@@ -74,6 +76,7 @@ object ChatClient:
     }
 
   def active(
+      username: UserName,
       done: Promise[akka.Done],
       dec: SymmetricCryptography.Decrypter,
     )(using log: Logger
@@ -81,8 +84,7 @@ object ChatClient:
     Behaviors.receiveMessage {
       case Protocol.NextCmd(ackTo, cmd) =>
         // log.info("Got {}", cmd)
-        val out = handle(cmd, dec)
-        println(s"$GREEN_B$BOLD$WHITE $out $RESET")
+        handle(username, cmd, dec)
         ackTo.tell(Ack)
         Behaviors.same
       case Protocol.Complete =>
@@ -99,20 +101,25 @@ object ChatClient:
     }
 
   def handle(
+      username: UserName,
       cmd: ServerCommand,
       dec: SymmetricCryptography.Decrypter,
-    ): String =
+    ): Unit =
     cmd match
       case ServerCommand.Message(user, msg) =>
         shared.crypto.base64Decode(msg) match
           case Some(bts) =>
             val msg = new String(dec.decrypt(bts), StandardCharsets.UTF_8)
-            s"$user: $msg"
+            if (username.!==(user)) println(s"$GREEN_B$RED_B$WHITE $user: $msg $RESET")
+            else println(s"$GREEN_B$BOLD$WHITE $user: $msg $RESET")
+
           case None =>
             throw new Exception("Decrypt error !!!")
       case ServerCommand.Disconnect(cause) =>
-        s"Server disconnected because: $cause"
+        val msg = s"Server disconnected because: $cause"
+        println(s"$GREEN_B$BOLD$WHITE $msg $RESET")
       case ServerCommand.Authorized(usr, greeting) =>
-        s"Logger in as $usr. $greeting"
+        val msg = s"Logger in as $usr. $greeting"
+        println(s"$GREEN_B$BOLD$WHITE $msg $RESET")
 
 end ChatClient

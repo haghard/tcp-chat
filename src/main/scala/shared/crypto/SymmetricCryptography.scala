@@ -83,6 +83,8 @@ object SymmetricCryptography:
     def decrypt(content: Array[Byte], bufferSize: Int = 1024): Array[Byte] =
       val cipher = Cipher.getInstance(algorithm)
       val ivBytes = Array.ofDim[Byte](16)
+      new SecureRandom().nextBytes(ivBytes)
+
       val buffer = new Array[Byte](bufferSize)
       val in = new ByteArrayInputStream(content)
 
@@ -118,7 +120,7 @@ object SymmetricCryptography:
     if (Files.exists(jks))
       // println(s"Load jks $jks")
       val password = jksPassword.toCharArray
-      val ks: KeyStore = KeyStore.getInstance("pkcs12")
+      val ks: KeyStore = KeyStore.getInstance("PKCS12")
       ks.load(new FileInputStream(jksFilePath), password)
 
       val secretKey: javax.crypto.SecretKey =

@@ -69,6 +69,23 @@ object Client:
     val authorized = Promise[akka.Done]()
     val sinkCompleted = Promise[akka.Done]()
 
+    val commandsIn0 =
+      Source.future(authorized.future).flatMapConcat { _ =>
+        import concurrent.duration.DurationInt
+        Source
+          .tick(1.second, 500.milli, ())
+          .zipWithIndex
+          .map { case (_, i) => i }
+          .map(i => s"tick-at-$i")
+          .mapMaterializedValue(_ => akka.NotUsed)
+          .map { msg =>
+            ClientCommand.SendMessage(
+              username,
+              shared.crypto.base64Encode(cryptography.enc.encrypt(msg.getBytes(StandardCharsets.UTF_8))),
+            )
+          }
+      }
+
     val commandsIn =
       Source.future(authorized.future).flatMapConcat { _ =>
         Source
@@ -93,7 +110,7 @@ object Client:
 
     val sinkActor: Sink[ServerCommand, akka.NotUsed] =
       ActorSink.actorRefWithBackpressure(
-        system.spawn(ChatClient(authorized, sinkCompleted, cryptography.dec), username.toString()),
+        system.spawn(ChatClient(username, authorized, sinkCompleted, cryptography.dec), username.toString()),
         ChatClient.Protocol.NextCmd(_, _),
         ChatClient.Protocol.Connect(_),
         ChatClient.Ack,
