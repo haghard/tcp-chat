@@ -5,18 +5,18 @@ import server.Guardian.{ ChatMsgReply, ConnectionAcceptedReply }
 import shared.Protocol
 import shared.Protocol.{ ServerCommand, UserName }
 import shared.crypto.SymmetricCryptography
+import shared.crypto.SymmetricCryptography.Cryptography
 
 import java.net.InetSocketAddress
 
-final case class State(
+final case class ServerState(
     appCfg: scala2.AppConfig,
-    decrypter: SymmetricCryptography.Decrypter,
-    ecrypter: SymmetricCryptography.Encrypter,
+    cryptography: Cryptography,
     pendingAddress: Option[InetSocketAddress] = None,
     usersOnline: Map[InetSocketAddress, UserName] = Map.empty):
   self =>
 
-  def authorize(usr: UserName, pws: String): (State, ChatMsgReply) =
+  def authorize(usr: UserName, pws: String): (ServerState, ChatMsgReply) =
     if (usr.inBanned(appCfg.bannedUsers))
       (copy(pendingAddress = None), ChatMsgReply.Error(ServerCommand.Disconnect(s"Auth($usr) error: Banned")))
     else if (pws != "secret")
@@ -30,10 +30,10 @@ final case class State(
           println("This should never happen !!!")
           (self, ChatMsgReply.Error(ServerCommand.Disconnect("Invalid state")))
 
-  def disconnect(remoteAddress: InetSocketAddress): State =
+  def disconnect(remoteAddress: InetSocketAddress): ServerState =
     self.copy(pendingAddress = None, usersOnline - remoteAddress)
 
-  def acceptCon(remoteAddress: InetSocketAddress): (State, ConnectionAcceptedReply) =
+  def acceptCon(remoteAddress: InetSocketAddress): (ServerState, ConnectionAcceptedReply) =
     (self.copy(pendingAddress = Some(remoteAddress)), ConnectionAcceptedReply.Ok)
 
   /*if (ThreadLocalRandom.current().nextBoolean())

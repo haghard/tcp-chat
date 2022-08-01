@@ -9,10 +9,12 @@ import akka.actor.typed.{ ActorRef, Behavior, DispatcherSelector, PostStop }
 import shared.Protocol
 import shared.Protocol.{ ClientCommand, ServerCommand, UserName }
 import shared.crypto.SymmetricCryptography
+import shared.crypto.SymmetricCryptography.Cryptography
 
 import java.net.InetSocketAddress
 import java.nio.charset.StandardCharsets
 import java.util.concurrent.ThreadLocalRandom
+import shared.crypto.SymmetricCryptography.Cryptography
 
 object Guardian:
 
@@ -37,8 +39,7 @@ object Guardian:
 
   def apply(
       appCfg: scala2.AppConfig,
-      ecrypter: SymmetricCryptography.Encrypter,
-      decrypter: SymmetricCryptography.Decrypter,
+      cryptography: Cryptography,
     ): Behavior[GCmd[?]] =
     // Behaviors.supervise()
     Behaviors
@@ -56,10 +57,10 @@ object Guardian:
         ctx.log.info("banned-users: [{}]", appCfg.bannedUsers.mkString(","))
         ctx.log.info("★ ★ ★ ★ ★ ★ ★ ★ ★")
 
-        Behaviors.withStash(1 << 5)(implicit buf => active(State(appCfg, decrypter, ecrypter)))
+        Behaviors.withStash(1 << 5)(implicit buf => active(ServerState(appCfg, cryptography)))
       }
 
-  def active(state: State)(using ctx: ActorContext[GCmd[?]], buf: StashBuffer[GCmd[?]]): Behavior[GCmd[?]] =
+  def active(state: ServerState)(using ctx: ActorContext[GCmd[?]], buf: StashBuffer[GCmd[?]]): Behavior[GCmd[?]] =
     Behaviors
       .receiveMessage[GCmd[?]] {
         case GCmd.Accept(address, replyTo) =>
@@ -81,7 +82,7 @@ object Guardian:
               // println(s"$usr: $text")
               shared.crypto.base64Decode(text) match
                 case Some(bts) =>
-                  val out = new String(state.decrypter.decrypt(bts), StandardCharsets.UTF_8)
+                  val out = new String(state.cryptography.dec.decrypt(bts), StandardCharsets.UTF_8)
                   if (out == Protocol.ClientCommand.List)
                     cmd
                       .replyTo
@@ -95,7 +96,8 @@ object Guardian:
                                 .crypto
                                 .base64Encode(
                                   state
-                                    .ecrypter
+                                    .cryptography
+                                    .enc
                                     .encrypt(
                                       state
                                         .usersOnline
@@ -130,7 +132,7 @@ object Guardian:
 
   def authorizeUser(
       address: InetSocketAddress,
-      state: State,
+      state: ServerState,
     )(using ctx: ActorContext[GCmd[?]],
       buf: StashBuffer[GCmd[?]],
     ): Behavior[GCmd[?]] =

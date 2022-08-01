@@ -36,6 +36,7 @@ import org.slf4j.Logger
 import shared.Protocol
 import shared.Protocol.{ ClientCommand, ServerCommand }
 import shared.crypto.SymmetricCryptography
+import shared.crypto.SymmetricCryptography.Cryptography
 
 import java.net.InetSocketAddress
 import java.nio.charset.StandardCharsets
@@ -48,8 +49,7 @@ final class Bootstrap(
     host: String,
     port: Int,
     appCfg: scala2.AppConfig,
-    ecrypter: SymmetricCryptography.Encrypter,
-    decrypter: SymmetricCryptography.Decrypter,
+    cryptography: Cryptography,
   )(using system: ActorSystem[SpawnProtocol.Command]):
 
   given ec: ExecutionContext = system.executionContext
@@ -85,7 +85,7 @@ final class Bootstrap(
   def runTcpServer(): Unit =
     system
       .ask((ref: ActorRef[ActorRef[Guardian.GCmd[?]]]) =>
-        SpawnProtocol.Spawn(Guardian(appCfg, ecrypter, decrypter), "guardian", Props.empty, ref)
+        SpawnProtocol.Spawn(Guardian(appCfg, cryptography), "guardian", Props.empty, ref)
       )
       .foreach { guardian =>
 
@@ -116,7 +116,10 @@ final class Bootstrap(
                           case ClientCommand.SendMessage(_, msg) =>
                             shared.crypto.base64Decode(msg) match
                               case Some(bts) =>
-                                !(new String(decrypter.decrypt(bts), StandardCharsets.UTF_8) == ClientCommand.Quit)
+                                !(new String(
+                                  cryptography.dec.decrypt(bts),
+                                  StandardCharsets.UTF_8,
+                                ) == ClientCommand.Quit)
                               case None =>
                                 system.log.error(s"Decrypter($msg) error")
                                 false

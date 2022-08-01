@@ -34,7 +34,7 @@ object Main extends Ops:
     // To create JKS
     // shared.crypto.SymmetricCryptography.createJKS(appCfg.jksPath, appCfg.jksPsw)
 
-    val (ecrypter, decrypter) =
+    val cryptography =
       shared.crypto.SymmetricCryptography.getCryptography(appCfg.jksPath, appCfg.jksPsw)
 
     /*val in = shared.crypto.base64Encode(encrypter.encrypt("Hello asdsdfs 234123 asdf ".getBytes(StandardCharsets.UTF_8)))
@@ -42,6 +42,6 @@ object Main extends Ops:
       println("******************" + new String(decrypter.decrypt(t), StandardCharsets.UTF_8))
     }*/
 
-    new Bootstrap(host, port, appCfg, ecrypter, decrypter).runTcpServer()
+    new Bootstrap(host, port, appCfg, cryptography).runTcpServer()
 
   end main

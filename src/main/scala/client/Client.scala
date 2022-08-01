@@ -63,7 +63,7 @@ object Client:
     import system.dispatcher
 
     //
-    val (encrypter, decrypter) =
+    val cryptography =
       shared.crypto.SymmetricCryptography.getCryptography("./jks/chat.jks", "open$sesam")
 
     val authorized = Promise[akka.Done]()
@@ -80,7 +80,7 @@ object Client:
           .map { msg =>
             ClientCommand.SendMessage(
               username,
-              shared.crypto.base64Encode(encrypter.encrypt(msg.getBytes(StandardCharsets.UTF_8))),
+              shared.crypto.base64Encode(cryptography.enc.encrypt(msg.getBytes(StandardCharsets.UTF_8))),
             )
           }
       }
@@ -93,7 +93,7 @@ object Client:
 
     val sinkActor: Sink[ServerCommand, akka.NotUsed] =
       ActorSink.actorRefWithBackpressure(
-        system.spawn(ChatClient(authorized, sinkCompleted, decrypter), username.toString()),
+        system.spawn(ChatClient(authorized, sinkCompleted, cryptography.dec), username.toString()),
         ChatClient.Protocol.NextCmd(_, _),
         ChatClient.Protocol.Connect(_),
         ChatClient.Ack,

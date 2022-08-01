@@ -38,6 +38,8 @@ import java.util.Base64
  */
 object SymmetricCryptography:
 
+  final case class Cryptography(enc: Encrypter, dec: Decrypter)
+
   private val ALGORITHM = "AES"
   private val CIPHER = "AES/CBC/PKCS5Padding"
   private val keyEntryName = "chat"
@@ -110,7 +112,7 @@ object SymmetricCryptography:
   def getCryptography(
       jksFilePath: String,
       jksPassword: String,
-    ): (Encrypter, Decrypter) =
+    ): Cryptography =
     val jks = Paths.get(jksFilePath)
 
     if (Files.exists(jks))
@@ -122,11 +124,11 @@ object SymmetricCryptography:
       val secretKey: javax.crypto.SecretKey =
         ks.getKey(keyEntryName, password).asInstanceOf[javax.crypto.SecretKey]
 
-      // println("Loaded: " + shared.crypto.base64Encode(secretKey.getEncoded))
+      println("Loaded: " + shared.crypto.base64Encode(secretKey.getEncoded))
 
       val encrypter = Encrypter(secretKey, CIPHER)
       val decrypter = Decrypter(secretKey, CIPHER)
-      (encrypter, decrypter)
+      Cryptography(encrypter, decrypter)
     else throw new Exception(s"$jks doesn't exist!")
 
   end getCryptography
