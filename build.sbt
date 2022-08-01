@@ -106,6 +106,9 @@ lazy val root = project
       "com.typesafe.akka" %% "akka-stream-typed"  % AkkaVersion withSources() withJavadoc(),
       "com.typesafe.akka" %% "akka-slf4j"         % AkkaVersion,
       "org.scodec"        %% "scodec-core"        % "2.1.0",
+      "com.madgag.spongycastle" % "core" % "1.58.0.0",
+      /*"org.bouncycastle" % "bcprov-jdk15on" % "1.70",
+      "org.bouncycastle" % "bcpkix-jdk15on" % "1.70",*/
     ),
   )
   .aggregate(scala2).dependsOn(scala2)
@@ -120,7 +123,7 @@ lazy val scala2 = project
     //Scala 2.13 dependencies
     libraryDependencies ++= Seq(
       "com.github.pureconfig" %% "pureconfig" % "0.17.1",
-      "com.github.alexandrnikitin" %%   "bloom-filter"  % "0.13.1",
+      //"com.github.alexandrnikitin" %%   "bloom-filter"  % "0.13.1",
       //"com.rklaehn" %% "radixtree" % "0.5.0"
     )
   )

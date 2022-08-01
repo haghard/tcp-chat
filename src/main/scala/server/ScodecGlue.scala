@@ -16,6 +16,7 @@ import scala.util.Failure
 import scala.util.Success
 import scala.util.Try
 import shared.Protocol.*
+import shared.crypto.SymmetricCryptography
 
 object ScodecGlue:
 
@@ -35,8 +36,9 @@ object ScodecGlue:
       .via(Framing.simpleFramingProtocolDecoder(maxFrameLength))
       .map { frame =>
         codec.decode(BitVector.view(frame.toByteBuffer)) match
-          case Attempt.Successful(t)  => Success(t.value)
-          case Attempt.Failure(cause) => Failure(new RuntimeException(s"Unparsable command: $cause"))
+          case Attempt.Successful(t) => Success(t.value)
+          case Attempt.Failure(cause) =>
+            Failure(new RuntimeException(s"Unparsable command: $cause"))
       }
 
   def encoder[T](codec: Codec[T]): Flow[T, ByteString, NotUsed] =

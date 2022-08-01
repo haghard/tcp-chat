@@ -8,8 +8,10 @@ import akka.actor.typed.scaladsl.{ ActorContext, Behaviors, StashBuffer }
 import akka.actor.typed.{ ActorRef, Behavior, DispatcherSelector, PostStop }
 import shared.Protocol
 import shared.Protocol.{ ClientCommand, ServerCommand, UserName }
+import shared.crypto.SymmetricCryptography
 
 import java.net.InetSocketAddress
+import java.nio.charset.StandardCharsets
 import java.util.concurrent.ThreadLocalRandom
 
 object Guardian:
@@ -20,7 +22,6 @@ object Guardian:
 
   enum ChatMsgReply(val serverCmd: ServerCommand):
     case Broadcast(cmd: ServerCommand) extends ChatMsgReply(cmd)
-    case DirectResponse(cmd: ServerCommand) extends ChatMsgReply(cmd)
     case Error(cmd: ServerCommand) extends ChatMsgReply(cmd)
 
   enum CmdSource:
@@ -34,7 +35,11 @@ object Guardian:
     case Disconnected(remoteAddress: InetSocketAddress) extends GCmd(CmdSource.Auth)
   end GCmd
 
-  def apply(appCfg: scala2.AppConfig): Behavior[GCmd[?]] =
+  def apply(
+      appCfg: scala2.AppConfig,
+      ecrypter: SymmetricCryptography.Encrypter,
+      decrypter: SymmetricCryptography.Decrypter,
+    ): Behavior[GCmd[?]] =
     // Behaviors.supervise()
     Behaviors
       .setup[GCmd[?]] { implicit ctx =>
@@ -51,7 +56,7 @@ object Guardian:
         ctx.log.info("banned-users: [{}]", appCfg.bannedUsers.mkString(","))
         ctx.log.info("★ ★ ★ ★ ★ ★ ★ ★ ★")
 
-        Behaviors.withStash(1 << 5)(implicit buf => active(State(appCfg)))
+        Behaviors.withStash(1 << 5)(implicit buf => active(State(appCfg, decrypter, ecrypter)))
       }
 
   def active(state: State)(using ctx: ActorContext[GCmd[?]], buf: StashBuffer[GCmd[?]]): Behavior[GCmd[?]] =
@@ -72,11 +77,43 @@ object Guardian:
 
         case cmd: GCmd.WrappedCmd =>
           cmd.clientCmd match
-            case c: ClientCommand.SendMessage =>
-              ctx.log.info("{}: {}", c.usr, c.msg)
-              // if (ThreadLocalRandom.current().nextDouble() > .6) Thread.sleep(2_400)
+            case ClientCommand.SendMessage(usr, text) =>
+              // println(s"$usr: $text")
+              shared.crypto.base64Decode(text) match
+                case Some(bts) =>
+                  val out = new String(state.decrypter.decrypt(bts), StandardCharsets.UTF_8)
+                  if (out == Protocol.ClientCommand.List)
+                    cmd
+                      .replyTo
+                      .tell(
+                        ChatMsgReply.Broadcast(
+                          Protocol
+                            .ServerCommand
+                            .Message(
+                              usr,
+                              shared
+                                .crypto
+                                .base64Encode(
+                                  state
+                                    .ecrypter
+                                    .encrypt(
+                                      state
+                                        .usersOnline
+                                        .values
+                                        .map(_.toString())
+                                        .mkString(",")
+                                        .getBytes(StandardCharsets.UTF_8)
+                                    )
+                                ),
+                            )
+                        )
+                      )
+                  else
+                    cmd.replyTo.tell(state.msgReply(usr, text))
 
-              cmd.replyTo.tell(state.msgReply(c.usr, c.msg))
+                case None =>
+                  throw new Exception("Decrypt error !!!")
+
               Behaviors.same
             case c: ClientCommand.ShowAdvt =>
               cmd.replyTo.tell(state.msgReply(c.usr, c.msg))
@@ -100,9 +137,9 @@ object Guardian:
     Behaviors.receiveMessage[GCmd[?]] {
       case c @ GCmd.WrappedCmd(clientCmd, replyTo) =>
         clientCmd match
-          case ClientCommand.Authorize(usr) =>
+          case ClientCommand.Authorize(usr, pub) =>
             ctx.log.info("2.Authorize [{} - {}]", usr, address)
-            val (updatedState, reply) = state.authorize(usr)
+            val (updatedState, reply) = state.authorize(usr, pub)
             replyTo.tell(reply)
             reply match
               case _: ChatMsgReply.Error => ctx.log.info("2.Authorization [{} - {}] Error", usr, address)
