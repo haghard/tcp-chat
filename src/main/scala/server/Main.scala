@@ -31,7 +31,7 @@ object Main extends Ops:
 
     system.log.warn(system.printTree)
 
-    // To create JKS
+    // To create a JKS file
     // shared.crypto.SymmetricCryptography.createJKS(appCfg.jksPath, appCfg.jksPsw)
 
     val cryptography =
