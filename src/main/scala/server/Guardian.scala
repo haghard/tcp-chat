@@ -73,12 +73,12 @@ object Guardian:
 
         case cmd: GCmd.WrappedCmd =>
           cmd.clientCmd match
-            case ClientCommand.SendMessage(usr, text) =>
+            case ClientCommand.SendMessage(usr, encodedText) =>
               // println(s"$usr: $text")
-              shared.crypto.base64Decode(text) match
+              shared.crypto.base64Decode(encodedText) match
                 case Some(bts) =>
-                  val out = new String(state.cryptography.dec.decrypt(bts), StandardCharsets.UTF_8)
-                  if (out == Protocol.ClientCommand.List)
+                  val decryptText = new String(state.cryptography.dec.decrypt(bts), StandardCharsets.UTF_8)
+                  if (decryptText == Protocol.ClientCommand.List)
                     cmd
                       .replyTo
                       .tell(
@@ -106,7 +106,7 @@ object Guardian:
                         )
                       )
                   else
-                    cmd.replyTo.tell(state.msgReply(usr, text))
+                    cmd.replyTo.tell(state.msgReply(usr, encodedText))
 
                 case None =>
                   throw new Exception("Decrypt error !!!")

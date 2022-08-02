@@ -7,7 +7,7 @@ package client
 import akka.Done
 import akka.actor.ActorSystem
 import akka.routing.SeveralRoutees
-import akka.stream.{ ActorMaterializer, Materializer, OverflowStrategy, SystemMaterializer }
+import akka.stream.{ ActorMaterializer, Attributes, Materializer, OverflowStrategy, SystemMaterializer }
 import akka.stream.scaladsl.Flow
 import akka.stream.scaladsl.Keep
 import akka.stream.scaladsl.Sink
@@ -69,14 +69,14 @@ object Client:
     val authorized = Promise[akka.Done]()
     val sinkCompleted = Promise[akka.Done]()
 
-    val commandsIn0 =
+    val consoleInput0 =
       Source.future(authorized.future).flatMapConcat { _ =>
         import concurrent.duration.DurationInt
         Source
-          .tick(1.second, 500.milli, ())
+          .tick(1.second, 120.milli, ())
           .zipWithIndex
           .map { case (_, i) => i }
-          .map(i => s"tick-at-$i")
+          .map(i => s"ping-$i")
           .mapMaterializedValue(_ => akka.NotUsed)
           .map { msg =>
             ClientCommand.SendMessage(
@@ -86,7 +86,7 @@ object Client:
           }
       }
 
-    val commandsIn =
+    val consoleInput =
       Source.future(authorized.future).flatMapConcat { _ =>
         Source
           .unfoldResource[String, Iterator[String]](
@@ -105,7 +105,7 @@ object Client:
     val in =
       Source
         .single(ClientCommand.Authorize(username, "secret")) // TODO: encrypt
-        .concat(commandsIn)
+        .concat(consoleInput)
         .via(ClientCommand.Encoder)
 
     val sinkActor: Sink[ServerCommand, akka.NotUsed] =
@@ -125,6 +125,7 @@ object Client:
         .takeWhile(!_.toOption.exists(_.isInstanceOf[ServerCommand.Disconnect]), inclusive = true)
         .map(_.fold(ex => throw ex, identity))
         .to(sinkActor)
+        .addAttributes(Attributes.inputBuffer(1, 1))
 
     val connected = in
       .viaMat(Tcp(system).outgoingConnection(host, port))(Keep.right)

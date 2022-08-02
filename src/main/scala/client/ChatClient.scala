@@ -110,8 +110,10 @@ object ChatClient:
         shared.crypto.base64Decode(msg) match
           case Some(bts) =>
             val msg = new String(dec.decrypt(bts), StandardCharsets.UTF_8)
-            if (username.!==(user)) println(s"$GREEN_B$RED_B$WHITE $user: $msg $RESET")
-            else println(s"$GREEN_B$BOLD$WHITE $user: $msg $RESET")
+            if (username.!==(user))
+              println(s"$GREEN_B$RED_B$WHITE $user: $msg $RESET")
+            else
+              println(s"$GREEN_B$BOLD$WHITE $user: $msg $RESET")
 
           case None =>
             throw new Exception("Decrypt error !!!")

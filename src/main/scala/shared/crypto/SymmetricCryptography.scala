@@ -43,6 +43,7 @@ object SymmetricCryptography:
   private val ALGORITHM = "AES"
   private val CIPHER = "AES/CBC/PKCS5Padding"
   private val keyEntryName = "chat"
+  private val keyStoreType = "PKCS12"
 
   final class Encrypter(secretKey: javax.crypto.SecretKey, alg: String):
     @tailrec final def readByChunk(
@@ -120,7 +121,7 @@ object SymmetricCryptography:
     if (Files.exists(jks))
       // println(s"Load jks $jks")
       val password = jksPassword.toCharArray
-      val ks: KeyStore = KeyStore.getInstance("PKCS12")
+      val ks: KeyStore = KeyStore.getInstance(keyStoreType)
       ks.load(new FileInputStream(jksFilePath), password)
 
       val secretKey: javax.crypto.SecretKey =
@@ -140,8 +141,14 @@ object SymmetricCryptography:
     val key = Array.ofDim[Byte](32)
     secureRandom.nextBytes(key)
 
+    /*
+    val keyGen = javax.crypto.KeyGenerator.getInstance(ALGORITHM)
+    keyGen.init(256) //
+    val secretKey: javax.crypto.SecretKey = keyGen.generateKey()
+     */
+
     val secretKey: javax.crypto.SecretKey = new javax.crypto.spec.SecretKeySpec(key, ALGORITHM)
-    val ks: KeyStore = KeyStore.getInstance("pkcs12")
+    val ks: KeyStore = KeyStore.getInstance(keyStoreType)
 
     val pwdArray = jksPassword.toCharArray()
     // We tell KeyStore to create a new one by passing null as the first parameter

@@ -54,7 +54,7 @@ final class Bootstrap(
 
   given ec: ExecutionContext = system.executionContext
   given sch: Scheduler = system.scheduler
-  given to: akka.util.Timeout = akka.util.Timeout(3.seconds)
+  given to: akka.util.Timeout = akka.util.Timeout(4.seconds)
   given logger: Logger = system.log
 
   val bs = appCfg.bufferSize
@@ -88,8 +88,7 @@ final class Bootstrap(
         SpawnProtocol.Spawn(Guardian(appCfg, cryptography), "guardian", Props.empty, ref)
       )
       .foreach { guardian =>
-
-        val ((q, ks), broadcastSource) = mk(guardian, logger)
+        val ((queue, ks), source) = mk(guardian, logger)
 
         /*val showAdvtEvery = 45.seconds
         Source
@@ -128,7 +127,7 @@ final class Bootstrap(
                       )
                       .mapConcat {
                         case Success(cmd) =>
-                          if (q.offer(cmd).isEnqueued) Nil else ClientCommand.Backpressured :: Nil
+                          if (queue.offer(cmd).isEnqueued) Nil else ClientCommand.Backpressured :: Nil
                         case Failure(ex) =>
                           Protocol.ServerCommand.Disconnect(ex.getMessage) :: Nil
                       }
@@ -144,8 +143,7 @@ final class Bootstrap(
                           case Failure(ex) =>
                             Protocol.ServerCommand.Disconnect(ex.getMessage) :: Nil
                       }*/
-                      .merge(broadcastSource, eagerComplete = true)
-                      .via(Protocol.ServerCommand.Encoder)
+                      .merge(source, eagerComplete = true)
                       .watchTermination() { (_, done) =>
                         done.map { _ =>
                           logger.info(s"Connection from ${remote.getHostString}:${remote.getPort} has been terminated")
@@ -153,6 +151,7 @@ final class Bootstrap(
                         }
                         NotUsed
                       }
+                      .via(Protocol.ServerCommand.Encoder)
 
                   connection.handleWith(connectionFlow)
 
